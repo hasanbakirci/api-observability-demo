@@ -1,0 +1,93 @@
+version: '3.9'
+
+networks:
+  demo-network:
+
+volumes:
+  mq_data:
+  cache_data:
+  mongo-data:
+  prometheus_data:
+  grafana_data:
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: demo-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      - "15692:15692"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    command: /bin/sh -c "rabbitmq-plugins enable --offline rabbitmq_prometheus && rabbitmq-server"
+    volumes:
+      - mq_data:/var/lib/rabbitmq
+    networks:
+      - demo-network
+
+  api:
+    image: api-observability-demo
+    container_name: demo-api
+    command: api
+    ports:
+      - "8080:8080"
+    restart: always
+    depends_on:
+      - rabbitmq
+    networks:
+      - demo-network
+
+  consumer:
+    image: api-observability-demo
+    container_name: demo-consumer
+    command: consumer
+    restart: always
+    depends_on:
+      - rabbitmq
+    networks:
+      - demo-network
+
+  nginx:
+    image: nginx:latest
+    container_name: demo-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - demo-network
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: demo-nginx-exporter
+    command:
+      - "-nginx.scrape-uri=http://nginx/status"
+    ports:
+      - "9113:9113"
+    depends_on:
+      - nginx
+    networks:
+      - demo-network
+
+  prometheus:
+    image: prom/prometheus
+    container_name: demo-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - demo-network
+
+  grafana:
+    image: grafana/grafana
+    container_name: demo-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - demo-network
